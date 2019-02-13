@@ -4,6 +4,7 @@
 #include <climits>
 #include <algorithm>
 #include <iomanip>      // for std::put_time
+#include <functional>
 
 #include "image.h"
 #include "ds-private.h"

@@ -4,10 +4,12 @@
 #if !defined(MAKEFILE) || ( defined(OFFLINE_TEST) )
 
 #define CATCH_CONFIG_MAIN
+#include <functional>
 #include "catch/catch.hpp"
 
 #include "unit-tests-common.h"
 #include "../src/device.h"
+
 
 #include <sstream>
 

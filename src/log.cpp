@@ -1,3 +1,5 @@
+#include <functional>
+
 #include "types.h"
 
 #include <fstream>

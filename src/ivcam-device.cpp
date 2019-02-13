@@ -6,6 +6,7 @@
 #include <limits>
 #include <climits>
 #include <algorithm>
+#include <functional>
 
 #include "image.h"
 #include "ivcam-private.h"

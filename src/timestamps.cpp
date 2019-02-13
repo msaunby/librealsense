@@ -1,3 +1,4 @@
+#include <functional>
 #include "timestamps.h"
 #include "sync.h"
 #include <algorithm>

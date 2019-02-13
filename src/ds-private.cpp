@@ -1,6 +1,7 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2016 Intel Corporation. All Rights Reserved.
 #include <iomanip>      // for std::put_time
+#include <functional>
 
 #include "hw-monitor.h"
 #include "ds-private.h"

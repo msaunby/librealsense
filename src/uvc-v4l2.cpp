@@ -3,6 +3,7 @@
 
 #ifdef RS_USE_V4L2_BACKEND
 
+#include <functional>
 #include "uvc.h"
 
 #include <cassert>

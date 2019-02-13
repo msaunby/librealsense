@@ -4,7 +4,7 @@
 #include <mutex>
 #include <array>
 #include <string>
-
+#include <functional>
 #include "r200.h"
 #include "f200.h"
 #include "sr300.h"

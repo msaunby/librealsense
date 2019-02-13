@@ -1,3 +1,4 @@
+#include <functional>
 #include <cmath>
 #include "sync.h"
 

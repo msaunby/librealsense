@@ -1,4 +1,4 @@
-
+#include <functional>
 #include "archive.h"
 #include <algorithm>
 
