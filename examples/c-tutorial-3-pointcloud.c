@@ -73,20 +73,28 @@ int main()
     printf("    Firmware version: %s\n", rs_get_device_firmware_version(dev, &e));
     check_error();
 
-    /* Configure depth and color to run with the device's preferred settings */
-    rs_enable_stream_preset(dev, RS_STREAM_DEPTH, RS_PRESET_BEST_QUALITY, &e);
+    /* Use 320x240 to improve close-range coverage and reduce USB bandwidth. */
+    const int stream_width = 320, stream_height = 240;
+    rs_enable_stream(dev, RS_STREAM_DEPTH, stream_width, stream_height, RS_FORMAT_Z16, 30, &e);
     check_error();
-    rs_enable_stream_preset(dev, RS_STREAM_COLOR, RS_PRESET_BEST_QUALITY, &e);
+
+    int use_color_texture = 0;
+    rs_stream texture_stream = RS_STREAM_INFRARED;
+    rs_enable_stream(dev, texture_stream, stream_width, stream_height, RS_FORMAT_Y8, 30, &e);
     check_error();
+    printf("Using INFRARED texture stream at %dx%d.\n", stream_width, stream_height);
+
     rs_start_device(dev, &e);
     check_error();
 
     /* Open a GLFW window to display our output */
-    glfwInit();
-    GLFWwindow * win = glfwCreateWindow(1280, 960, "librealsense tutorial #3", NULL, NULL);
+    if(!glfwInit()) { printf("Failed to initialize GLFW\n"); return EXIT_FAILURE; }
+    GLFWwindow * win = glfwCreateWindow(640, 480, "librealsense tutorial #3", NULL, NULL);
+    if(!win) { printf("Failed to create GLFW window\n"); return EXIT_FAILURE; }
+    glfwMakeContextCurrent(win);
+    glfwSetWindowPos(win, 100, 100);
     glfwSetCursorPosCallback(win, on_cursor_pos);
     glfwSetMouseButtonCallback(win, on_mouse_button);
-    glfwMakeContextCurrent(win);
     while(!glfwWindowShouldClose(win))
     {
         /* Wait for new frame data */
@@ -97,17 +105,17 @@ int main()
         /* Retrieve our images */
         const uint16_t * depth_image = (const uint16_t *)rs_get_frame_data(dev, RS_STREAM_DEPTH, &e);
         check_error();
-        const uint8_t * color_image = (const uint8_t *)rs_get_frame_data(dev, RS_STREAM_COLOR, &e);
+        const uint8_t * texture_image = (const uint8_t *)rs_get_frame_data(dev, texture_stream, &e);
         check_error();
 
         /* Retrieve camera parameters for mapping between depth and color */
-        rs_intrinsics depth_intrin, color_intrin;
-        rs_extrinsics depth_to_color;
+        rs_intrinsics depth_intrin, texture_intrin;
+        rs_extrinsics depth_to_texture;
         rs_get_stream_intrinsics(dev, RS_STREAM_DEPTH, &depth_intrin, &e);
         check_error();
-        rs_get_device_extrinsics(dev, RS_STREAM_DEPTH, RS_STREAM_COLOR, &depth_to_color, &e);
+        rs_get_device_extrinsics(dev, RS_STREAM_DEPTH, texture_stream, &depth_to_texture, &e);
         check_error();
-        rs_get_stream_intrinsics(dev, RS_STREAM_COLOR, &color_intrin, &e);
+        rs_get_stream_intrinsics(dev, texture_stream, &texture_intrin, &e);
         check_error();
         float scale = rs_get_device_depth_scale(dev, &e);
         check_error();
@@ -116,7 +124,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        gluPerspective(60, (float)1280/960, 0.01f, 20.0f);
+        gluPerspective(60, (float)640/480, 0.01f, 20.0f);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         gluLookAt(0,0,0, 0,0,1, 0,-1,0);
@@ -142,22 +150,28 @@ int main()
                 /* Skip over pixels with a depth value of zero, which is used to indicate no data */
                 if(depth_value == 0) continue;
 
-                /* Map from pixel coordinates in the depth image to pixel coordinates in the color image */
+                /* Map from pixel coordinates in the depth image to pixel coordinates in the texture image */
                 float depth_pixel[2] = {(float)dx, (float)dy};
-                float depth_point[3], color_point[3], color_pixel[2];
+                float depth_point[3], texture_point[3], texture_pixel[2];
                 rs_deproject_pixel_to_point(depth_point, &depth_intrin, depth_pixel, depth_in_meters);
-                rs_transform_point_to_point(color_point, &depth_to_color, depth_point);
-                rs_project_point_to_pixel(color_pixel, &color_intrin, color_point);
+                rs_transform_point_to_point(texture_point, &depth_to_texture, depth_point);
+                rs_project_point_to_pixel(texture_pixel, &texture_intrin, texture_point);
 
-                /* Use the color from the nearest color pixel, or pure white if this point falls outside the color image */
-                const int cx = (int)roundf(color_pixel[0]), cy = (int)roundf(color_pixel[1]);
-                if(cx < 0 || cy < 0 || cx >= color_intrin.width || cy >= color_intrin.height)
+                /* Use the nearest texture pixel, or pure white if this point falls outside the texture image */
+                const int cx = (int)roundf(texture_pixel[0]), cy = (int)roundf(texture_pixel[1]);
+                if(cx < 0 || cy < 0 || cx >= texture_intrin.width || cy >= texture_intrin.height)
                 {
                     glColor3ub(255, 255, 255);
                 }
+                else if(use_color_texture)
+                {
+                    glColor3ubv(texture_image + (cy * texture_intrin.width + cx) * 3);
+                }
                 else
                 {
-                    glColor3ubv(color_image + (cy * color_intrin.width + cx) * 3);
+                    /* Infrared y8 is 1 byte per pixel; map to greyscale */
+                    uint8_t v = texture_image[cy * texture_intrin.width + cx];
+                    glColor3ub(v, v, v);
                 }
 
                 /* Emit a vertex at the 3D location of this depth pixel */

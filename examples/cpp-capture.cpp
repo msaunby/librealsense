@@ -11,11 +11,9 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <cstdlib>
 
 texture_buffer buffers[RS_STREAM_COUNT];
-bool align_depth_to_color = false;
-bool align_color_to_depth = false;
-bool color_rectification_enabled = false;
 
 // Split the screen into 640X480 tiles, according to the number of supported streams. Define layout as follows : tiles -> <columds,rows>
 const std::map<size_t, std::pair<int, int>> tiles_map = {       { 1,{ 1,1 } },
@@ -32,17 +30,21 @@ int main(int argc, char * argv[]) try
 
     rs::context ctx;
     if (ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
-    rs::device & dev = *ctx.get_device(0);
+    int device_index = 0;
+    if(argc > 1) device_index = std::atoi(argv[1]);
+    if(device_index < 0 || device_index >= ctx.get_device_count()) throw std::runtime_error("Requested device index is out of range");
+    rs::device & dev = *ctx.get_device(device_index);
+    std::cout << "Using device index " << device_index << ", serial " << dev.get_serial() << std::endl;
 
-    std::vector<rs::stream> supported_streams;
+    // Use conservative R200-safe streams and resolution.
+    const int stream_width = 320, stream_height = 240;
+    dev.enable_stream(rs::stream::depth, stream_width, stream_height, rs::format::z16, 30);
+    dev.enable_stream(rs::stream::infrared, stream_width, stream_height, rs::format::y8, 30);
+    try { dev.enable_stream(rs::stream::infrared2, stream_width, stream_height, rs::format::y8, 30); }
+    catch(...) { std::cout << "Device does not provide infrared2 stream." << std::endl; }
 
-    for (int i = (int)rs::capabilities::depth; i <= (int)rs::capabilities::fish_eye; i++)
-        if (dev.supports((rs::capabilities)i))
-            supported_streams.push_back((rs::stream)i);
-
-    // Configure all supported streams to run at 30 frames per second
-    for (auto & stream : supported_streams)
-        dev.enable_stream(stream, rs::preset::best_quality);
+    std::vector<rs::stream> supported_streams = { rs::stream::depth, rs::stream::infrared };
+    if (dev.is_stream_enabled(rs::stream::infrared2)) supported_streams.push_back(rs::stream::infrared2);
 
     // Compute field of view for each enabled stream
     for (auto & stream : supported_streams)
@@ -71,9 +73,6 @@ int main(int argc, char * argv[]) try
         auto dev = reinterpret_cast<rs::device *>(glfwGetWindowUserPointer(win));
         if (action != GLFW_RELEASE) switch (key)
         {
-        case GLFW_KEY_R: color_rectification_enabled = !color_rectification_enabled; break;
-        case GLFW_KEY_C: align_color_to_depth = !align_color_to_depth; break;
-        case GLFW_KEY_D: align_depth_to_color = !align_depth_to_color; break;
         case GLFW_KEY_E:
             if (dev->supports_option(rs::option::r200_emitter_enabled))
             {
@@ -110,12 +109,12 @@ int main(int argc, char * argv[]) try
         glPushMatrix();
         glfwGetWindowSize(win, &w, &h);
         glOrtho(0, w, h, 0, -1, +1);
-        buffers[0].show(dev, align_color_to_depth ? rs::stream::color_aligned_to_depth : (color_rectification_enabled ? rs::stream::rectified_color : rs::stream::color), 0, 0, tile_w, tile_h);
-        buffers[1].show(dev, align_depth_to_color ? (color_rectification_enabled ? rs::stream::depth_aligned_to_rectified_color : rs::stream::depth_aligned_to_color) : rs::stream::depth, w / cols, 0, tile_w, tile_h);
-        buffers[2].show(dev, rs::stream::infrared, 0, h / rows, tile_w, tile_h);
-        buffers[3].show(dev, rs::stream::infrared2, w / cols, h / rows, tile_w, tile_h);
-        if (dev.is_stream_enabled(rs::stream::fisheye))
-            buffers[4].show(dev, rs::stream::fisheye, 2 * w / cols, 0, tile_w, tile_h);
+        for (size_t i = 0; i < supported_streams.size(); ++i)
+        {
+            int col = (int)(i % cols);
+            int row = (int)(i / cols);
+            buffers[i].show(dev, supported_streams[i], col * tile_w, row * tile_h, tile_w, tile_h);
+        }
         glPopMatrix();
         glfwSwapBuffers(win);
     }

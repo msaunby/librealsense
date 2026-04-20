@@ -9,6 +9,11 @@
 
 std::vector<texture_buffer> buffers;
 
+struct device_view
+{
+    rs::device * dev;
+};
+
 int main(int argc, char * argv[]) try
 {
     rs::log_to_console(rs::log_severity::warn);
@@ -18,23 +23,23 @@ int main(int argc, char * argv[]) try
     if(ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
     
     // Enumerate all devices
-    std::vector<rs::device *> devices;
+    std::vector<device_view> devices;
     for(int i=0; i<ctx.get_device_count(); ++i)
     {
-        devices.push_back(ctx.get_device(i));
+        devices.push_back({ctx.get_device(i)});
     }
 
     // Configure and start our devices
-    for(auto dev : devices)
+    for(auto & device_view : devices)
     {
+        auto dev = device_view.dev;
         std::cout << "Starting " << dev->get_name() << "... ";
-        dev->enable_stream(rs::stream::depth, rs::preset::best_quality);
-        dev->enable_stream(rs::stream::color, rs::preset::best_quality);
+        dev->enable_stream(rs::stream::depth, 320, 240, rs::format::z16, 30);
+        dev->enable_stream(rs::stream::infrared, 320, 240, rs::format::y8, 30);
         dev->start();
-        std::cout << "done." << std::endl;
+        std::cout << "done (DEPTH + INFRARED)." << std::endl;
     }
 
-    // Depth and color
     buffers.resize(ctx.get_device_count() * 2);
 
     // Open a GLFW window
@@ -48,7 +53,7 @@ int main(int argc, char * argv[]) try
 
     // Does not account for correct aspect ratios
     auto perTextureWidth = int(windowWidth / devices.size());
-    auto perTextureHeight = 480;
+    auto perTextureHeight = windowHeight / 2;
 
     while (!glfwWindowShouldClose(win))
     {
@@ -65,13 +70,13 @@ int main(int argc, char * argv[]) try
         glPushMatrix();
         glOrtho(0, w, h, 0, -1, +1);
         glPixelZoom(1, -1);
-        int i=0, x=0;
-        for(auto dev : devices)
+        int x=0;
+        for(size_t device_index = 0; device_index < devices.size(); ++device_index)
         {
-            dev->poll_for_frames();
-            const auto c = dev->get_stream_intrinsics(rs::stream::color), d = dev->get_stream_intrinsics(rs::stream::depth);
-            buffers[i++].show(*dev, rs::stream::color, x, 0, perTextureWidth, perTextureHeight);
-            buffers[i++].show(*dev, rs::stream::depth, x, perTextureHeight, perTextureWidth, perTextureHeight);
+            auto dev = devices[device_index].dev;
+            dev->wait_for_frames();
+            buffers[device_index * 2].show(*dev, rs::stream::infrared, x, 0, perTextureWidth, perTextureHeight);
+            buffers[device_index * 2 + 1].show(*dev, rs::stream::depth, x, perTextureHeight, perTextureWidth, perTextureHeight);
             x += perTextureWidth;
         }
 

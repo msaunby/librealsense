@@ -25,17 +25,16 @@ int main() try
     printf("    Serial number: %s\n", dev->get_serial());
     printf("    Firmware version: %s\n", dev->get_firmware_version());
 
-    // Configure all streams to run at VGA resolution at 60 frames per second
-    dev->enable_stream(rs::stream::depth, 640, 480, rs::format::z16, 60);
-    dev->enable_stream(rs::stream::color, 640, 480, rs::format::rgb8, 60);
-    dev->enable_stream(rs::stream::infrared, 640, 480, rs::format::y8, 60);
-    try { dev->enable_stream(rs::stream::infrared2, 640, 480, rs::format::y8, 60); }
+    // Use conservative formats that work reliably on the legacy R200.
+    dev->enable_stream(rs::stream::depth, 640, 480, rs::format::z16, 30);
+    dev->enable_stream(rs::stream::infrared, 640, 480, rs::format::y8, 30);
+    try { dev->enable_stream(rs::stream::infrared2, 640, 480, rs::format::y8, 30); }
     catch(...) { printf("Device does not provide infrared2 stream.\n"); }
     dev->start();
 
     // Open a GLFW window to display our output
     glfwInit();
-    GLFWwindow * win = glfwCreateWindow(1280, 960, "librealsense tutorial #2", nullptr, nullptr);
+    GLFWwindow * win = glfwCreateWindow(1280, 480, "librealsense tutorial #2", nullptr, nullptr);
     glfwMakeContextCurrent(win);
     while(!glfwWindowShouldClose(win))
     {
@@ -52,18 +51,14 @@ int main() try
         glDrawPixels(640, 480, GL_RED, GL_UNSIGNED_SHORT, dev->get_frame_data(rs::stream::depth));
         glPixelTransferf(GL_RED_SCALE, 1.0f);
 
-        // Display color image as RGB triples
-        glRasterPos2f(0, 1);
-        glDrawPixels(640, 480, GL_RGB, GL_UNSIGNED_BYTE, dev->get_frame_data(rs::stream::color));
-
         // Display infrared image by mapping IR intensity to visible luminance
-        glRasterPos2f(-1, 0);
+        glRasterPos2f(0, 1);
         glDrawPixels(640, 480, GL_LUMINANCE, GL_UNSIGNED_BYTE, dev->get_frame_data(rs::stream::infrared));
 
         // Display second infrared image by mapping IR intensity to visible luminance
         if(dev->is_stream_enabled(rs::stream::infrared2))
         {
-            glRasterPos2f(0, 0);
+            glRasterPos2f(-1, 0);
             glDrawPixels(640, 480, GL_LUMINANCE, GL_UNSIGNED_BYTE, dev->get_frame_data(rs::stream::infrared2));
         }
 

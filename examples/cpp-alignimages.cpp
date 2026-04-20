@@ -27,15 +27,18 @@ int main(int argc, char * argv[]) try
     if(ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
     rs::device & dev = *ctx.get_device(0);
 
-    dev.enable_stream(rs::stream::depth, rs::preset::best_quality);
-    dev.enable_stream(rs::stream::color, rs::preset::best_quality);
-    try { dev.enable_stream(rs::stream::infrared2, rs::preset::best_quality); } catch(...) {}
+    const int stream_width = 320, stream_height = 240;
+    dev.enable_stream(rs::stream::depth, stream_width, stream_height, rs::format::z16, 30);
+    dev.enable_stream(rs::stream::infrared, stream_width, stream_height, rs::format::y8, 30);
+    try { dev.enable_stream(rs::stream::infrared2, stream_width, stream_height, rs::format::y8, 30); } catch(...) {}
+
+    bool color_enabled = false;
     dev.start();
 
     // Open a GLFW window
     glfwInit();
     std::ostringstream ss; ss << "CPP Image Alignment Example (" << dev.get_name() << ")";
-    GLFWwindow * win = glfwCreateWindow(dev.is_stream_enabled(rs::stream::infrared2) ? 1920 : 1280, 960, ss.str().c_str(), 0, 0);
+    GLFWwindow * win = glfwCreateWindow(1280, 960, ss.str().c_str(), 0, 0);
     glfwMakeContextCurrent(win);
 
     while (!glfwWindowShouldClose(win))
@@ -54,15 +57,30 @@ int main(int argc, char * argv[]) try
         glPushMatrix();
         glfwGetWindowSize(win, &w, &h);
         glOrtho(0, w, h, 0, -1, +1);
-        int s = w / (dev.is_stream_enabled(rs::stream::infrared2) ? 3 : 2);
-        buffers[0].show(dev, rs::stream::color, 0, 0, s, h-h/2);
-        buffers[1].show(dev, rs::stream::color_aligned_to_depth, s, 0, s, h-h/2);
-        buffers[2].show(dev, rs::stream::depth_aligned_to_color, 0, h/2, s, h-h/2);
-        buffers[3].show(dev, rs::stream::depth, s, h/2, s, h-h/2);
-        if(dev.is_stream_enabled(rs::stream::infrared2))
+        int half_w = w / 2;
+        int half_h = h / 2;
+        bool has_ir2 = dev.is_stream_enabled(rs::stream::infrared2);
+
+        if(color_enabled)
         {
-            buffers[4].show(dev, rs::stream::infrared2_aligned_to_depth, 2*s, 0, s, h-h/2);
-            buffers[5].show(dev, rs::stream::depth_aligned_to_infrared2, 2*s, h/2, s, h-h/2);
+            buffers[0].show(dev, rs::stream::color, 0, 0, half_w, half_h);
+            buffers[1].show(dev, rs::stream::color_aligned_to_depth, half_w, 0, half_w, half_h);
+            buffers[2].show(dev, rs::stream::depth_aligned_to_color, 0, half_h, half_w, half_h);
+            buffers[3].show(dev, rs::stream::depth, half_w, half_h, half_w, half_h);
+        }
+        else if(has_ir2)
+        {
+            buffers[0].show(dev, rs::stream::infrared, 0, 0, half_w, half_h);
+            buffers[1].show(dev, rs::stream::infrared2_aligned_to_depth, half_w, 0, half_w, half_h);
+            buffers[2].show(dev, rs::stream::depth, 0, half_h, half_w, half_h);
+            buffers[3].show(dev, rs::stream::depth_aligned_to_infrared2, half_w, half_h, half_w, half_h);
+        }
+        else
+        {
+            buffers[0].show(dev, rs::stream::infrared, 0, 0, half_w, half_h);
+            buffers[1].show(dev, rs::stream::depth, half_w, 0, half_w, half_h);
+            buffers[2].show(dev, rs::stream::infrared, 0, half_h, half_w, half_h);
+            buffers[3].show(dev, rs::stream::depth, half_w, half_h, half_w, half_h);
         }
         glPopMatrix();
         glfwSwapBuffers(win);

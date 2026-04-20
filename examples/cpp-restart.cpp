@@ -10,6 +10,7 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <string>
 
 texture_buffer buffers[RS_STREAM_COUNT];
 
@@ -20,7 +21,15 @@ int main(int argc, char * argv[]) try
 
     rs::context ctx;
     if(ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
-    rs::device & dev = *ctx.get_device(0);
+
+    int device_index = 0;
+    bool color_only = false;
+    if(argc > 1) device_index = std::atoi(argv[1]);
+    if(argc > 2 && std::string(argv[2]) == "color") color_only = true;
+    if(device_index < 0 || device_index >= ctx.get_device_count()) throw std::runtime_error("Requested device index is out of range");
+
+    rs::device & dev = *ctx.get_device(device_index);
+    std::cout << "Using device index " << device_index << ", serial " << dev.get_serial() << std::endl;
 
     // Open a GLFW window
     glfwInit();
@@ -28,7 +37,9 @@ int main(int argc, char * argv[]) try
     GLFWwindow * win = glfwCreateWindow(1280, 960, ss.str().c_str(), 0, 0);
     glfwMakeContextCurrent(win);
 
-    for(int i=0; i<20; ++i)
+    int first_mode = 0;
+    int last_mode = color_only ? 5 : 19;
+    for(int i = first_mode; i <= last_mode; ++i)
     {
         try
         {

@@ -24,13 +24,12 @@ int main(int argc, char * argv[]) try
     if(ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
     rs::device & dev = *ctx.get_device(0);
 
-    dev.enable_stream(rs::stream::depth, rs::preset::best_quality);
-    dev.enable_stream(rs::stream::color, rs::preset::best_quality);
-    dev.enable_stream(rs::stream::infrared, rs::preset::best_quality);
-    try { dev.enable_stream(rs::stream::infrared2, rs::preset::best_quality); } catch(...) {}
+    dev.enable_stream(rs::stream::depth, 640, 480, rs::format::z16, 30);
+    dev.enable_stream(rs::stream::infrared, 640, 480, rs::format::y8, 30);
+    try { dev.enable_stream(rs::stream::infrared2, 640, 480, rs::format::y8, 30); } catch(...) {}
     dev.start();
     
-    state app_state = {0, 0, 0, 0, false, {rs::stream::color, rs::stream::depth, rs::stream::infrared}, 0, &dev};
+    state app_state = {0, 0, 0, 0, false, {rs::stream::infrared}, 0, &dev};
     if(dev.is_stream_enabled(rs::stream::infrared2)) app_state.tex_streams.push_back(rs::stream::infrared2);
     
     glfwInit();
