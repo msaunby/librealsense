@@ -47,14 +47,23 @@ int main() try
     printf("    Serial number: %s\n", dev->get_serial());
     printf("    Firmware version: %s\n", dev->get_firmware_version());
 
-    // Use 320x240 to improve close-range coverage and reduce USB bandwidth.
-    const int stream_width = 320, stream_height = 240;
+    const int stream_width = 640, stream_height = 480;
     dev->enable_stream(rs::stream::depth, stream_width, stream_height, rs::format::z16, 30);
 
-    rs::stream texture_stream = rs::stream::infrared;
-    bool use_color_texture = false;
-    dev->enable_stream(texture_stream, stream_width, stream_height, rs::format::y8, 30);
-    printf("Using INFRARED texture stream at %dx%d.\n", stream_width, stream_height);
+    rs::stream texture_stream = rs::stream::color;
+    bool use_color_texture = true;
+    try
+    {
+        dev->enable_stream(texture_stream, stream_width, stream_height, rs::format::rgb8, 30);
+        printf("Using COLOR texture stream at %dx%d.\n", stream_width, stream_height);
+    }
+    catch(const rs::error &)
+    {
+        texture_stream = rs::stream::infrared;
+        use_color_texture = false;
+        dev->enable_stream(texture_stream, stream_width, stream_height, rs::format::y8, 30);
+        printf("Color stream unavailable, using INFRARED texture stream at %dx%d.\n", stream_width, stream_height);
+    }
     dev->start();
 
     // Open a GLFW window to display our output

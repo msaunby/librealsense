@@ -91,8 +91,57 @@ public:
         case rs::format::xyz32f:
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, data);
             break;
-        case rs::format::yuyv: // Display YUYV by showing the luminance channel and packing chrominance into ignored alpha channel
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, data);
+        case rs::format::yuyv:
+            {
+                // Convert YUYV to RGB for proper color display in the preview window.
+                rgb.clear();
+                rgb.resize(width * height * 3);
+
+                auto clamp_u8 = [](int v) -> uint8_t
+                {
+                    return (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
+                };
+
+                auto out = rgb.data();
+                auto in = reinterpret_cast<const uint8_t *>(data);
+                for(int y = 0; y < height; ++y)
+                {
+                    const uint8_t * row = in + y * stride * 2;
+                    for(int x = 0; x < width; x += 2)
+                    {
+                        const int y0 = row[0];
+                        const int u  = row[1] - 128;
+                        const int y1 = row[2];
+                        const int v  = row[3] - 128;
+
+                        const int c0 = y0 - 16;
+                        const int c1 = y1 - 16;
+
+                        const int r0 = (298 * c0 + 409 * v + 128) >> 8;
+                        const int g0 = (298 * c0 - 100 * u - 208 * v + 128) >> 8;
+                        const int b0 = (298 * c0 + 516 * u + 128) >> 8;
+
+                        const int r1 = (298 * c1 + 409 * v + 128) >> 8;
+                        const int g1 = (298 * c1 - 100 * u - 208 * v + 128) >> 8;
+                        const int b1 = (298 * c1 + 516 * u + 128) >> 8;
+
+                        *out++ = clamp_u8(r0);
+                        *out++ = clamp_u8(g0);
+                        *out++ = clamp_u8(b0);
+
+                        if(x + 1 < width)
+                        {
+                            *out++ = clamp_u8(r1);
+                            *out++ = clamp_u8(g1);
+                            *out++ = clamp_u8(b1);
+                        }
+
+                        row += 4;
+                    }
+                }
+
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+            }
             break;
         case rs::format::rgb8: case rs::format::bgr8: // Display both RGB and BGR by interpreting them RGB, to show the flipped byte ordering. Obviously, GL_BGR could be used on OpenGL 1.2+
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);

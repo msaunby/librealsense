@@ -12,6 +12,8 @@
 #include <map>
 #include <memory>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 texture_buffer buffers[RS_STREAM_COUNT];
 
@@ -29,22 +31,99 @@ int main(int argc, char * argv[]) try
     //rs::log_to_file(rs::log_severity::debug, "librealsense.log");
 
     rs::context ctx;
-    if (ctx.get_device_count() == 0) throw std::runtime_error("No device detected. Is it plugged in?");
+    const int device_count = ctx.get_device_count();
+    if (device_count == 0) throw std::runtime_error("No device detected. Is it plugged in?");
     int device_index = 0;
-    if(argc > 1) device_index = std::atoi(argv[1]);
-    if(device_index < 0 || device_index >= ctx.get_device_count()) throw std::runtime_error("Requested device index is out of range");
+
+    bool try_color = false;
+    for(int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if(arg == "-h" || arg == "--help")
+        {
+            std::cout << "Usage: cpp-capture [device_index] [--try-color]\n";
+            std::cout << "  device_index   Optional camera index, default 0\n";
+            std::cout << "  --try-color    Try color-only mode (640x480 yuyv@60) before fallback to depth/infrared\n";
+            return EXIT_SUCCESS;
+        }
+        if(arg == "--try-color")
+        {
+            try_color = true;
+            continue;
+        }
+        device_index = std::atoi(arg.c_str());
+    }
+
+    if(device_index < 0 || device_index >= device_count)
+    {
+        std::ostringstream err;
+        err << "Requested device index " << device_index << " is out of range. "
+            << "Detected " << device_count << " device(s).";
+        for(int i = 0; i < device_count; ++i)
+        {
+            rs::device * listed = ctx.get_device(i);
+            err << "\n  [" << i << "] " << listed->get_name() << " (serial " << listed->get_serial() << ")";
+        }
+        throw std::runtime_error(err.str());
+    }
     rs::device & dev = *ctx.get_device(device_index);
     std::cout << "Using device index " << device_index << ", serial " << dev.get_serial() << std::endl;
 
-    // Use conservative R200-safe streams and resolution.
-    const int stream_width = 320, stream_height = 240;
-    dev.enable_stream(rs::stream::depth, stream_width, stream_height, rs::format::z16, 30);
-    dev.enable_stream(rs::stream::infrared, stream_width, stream_height, rs::format::y8, 30);
-    try { dev.enable_stream(rs::stream::infrared2, stream_width, stream_height, rs::format::y8, 30); }
-    catch(...) { std::cout << "Device does not provide infrared2 stream." << std::endl; }
+    auto clear_all_streams = [&dev]()
+    {
+        if(dev.is_streaming()) dev.stop();
+        const rs::stream native_streams[] = {
+            rs::stream::depth,
+            rs::stream::color,
+            rs::stream::infrared,
+            rs::stream::infrared2,
+            rs::stream::fisheye
+        };
+        for(auto stream : native_streams)
+        {
+            if(dev.is_stream_enabled(stream)) dev.disable_stream(stream);
+        }
+    };
 
-    std::vector<rs::stream> supported_streams = { rs::stream::depth, rs::stream::infrared };
-    if (dev.is_stream_enabled(rs::stream::infrared2)) supported_streams.push_back(rs::stream::infrared2);
+    auto configure_depth_ir = [&dev]()
+    {
+        const int stream_width = 320, stream_height = 240;
+        dev.enable_stream(rs::stream::depth, stream_width, stream_height, rs::format::z16, 30);
+        dev.enable_stream(rs::stream::infrared, stream_width, stream_height, rs::format::y8, 30);
+        try { dev.enable_stream(rs::stream::infrared2, stream_width, stream_height, rs::format::y8, 30); }
+        catch(...) { std::cout << "Device does not provide infrared2 stream." << std::endl; }
+    };
+
+    std::vector<rs::stream> supported_streams;
+    bool color_mode_active = false;
+    clear_all_streams();
+    if(try_color)
+    {
+        std::cout << "Trying color-only mode: 640x480 yuyv @ 60..." << std::endl;
+        try
+        {
+            dev.enable_stream(rs::stream::color, 640, 480, rs::format::yuyv, 60);
+            dev.start();
+            dev.wait_for_frames();
+            dev.wait_for_frames();
+            std::cout << "Color mode started successfully." << std::endl;
+            supported_streams.push_back(rs::stream::color);
+            color_mode_active = true;
+        }
+        catch(const rs::error & e)
+        {
+            std::cout << "Color probe failed, falling back to depth/infrared." << std::endl;
+            std::cout << "  " << e.get_failed_function() << "(" << e.get_failed_args() << "): " << e.what() << std::endl;
+            clear_all_streams();
+        }
+    }
+
+    if(!color_mode_active)
+    {
+        configure_depth_ir();
+        supported_streams = { rs::stream::depth, rs::stream::infrared };
+        if (dev.is_stream_enabled(rs::stream::infrared2)) supported_streams.push_back(rs::stream::infrared2);
+    }
 
     // Compute field of view for each enabled stream
     for (auto & stream : supported_streams)
@@ -55,8 +134,8 @@ int main(int argc, char * argv[]) try
         std::cout << std::setprecision(1) << std::fixed << ", fov = " << intrin.hfov() << " x " << intrin.vfov() << ", distortion = " << intrin.model() << std::endl;
     }
 
-    // Start our device
-    dev.start();
+    // Start our device when not already started by color probe
+    if(!dev.is_streaming()) dev.start();
 
     // Open a GLFW window
     glfwInit();

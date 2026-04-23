@@ -25,12 +25,33 @@ int main(int argc, char * argv[]) try
     rs::device & dev = *ctx.get_device(0);
 
     dev.enable_stream(rs::stream::depth, 640, 480, rs::format::z16, 30);
-    dev.enable_stream(rs::stream::infrared, 640, 480, rs::format::y8, 30);
-    try { dev.enable_stream(rs::stream::infrared2, 640, 480, rs::format::y8, 30); } catch(...) {}
+
+    std::vector<rs::stream> texture_streams;
+    try
+    {
+        dev.enable_stream(rs::stream::color, 640, 480, rs::format::rgb8, 30);
+        texture_streams.push_back(rs::stream::color);
+        std::cout << "Using COLOR texture stream at 640x480." << std::endl;
+    }
+    catch(const rs::error &)
+    {
+        std::cout << "Color stream unavailable, falling back to INFRARED." << std::endl;
+    }
+
+    if(texture_streams.empty())
+    {
+        dev.enable_stream(rs::stream::infrared, 640, 480, rs::format::y8, 30);
+        texture_streams.push_back(rs::stream::infrared);
+        try
+        {
+            dev.enable_stream(rs::stream::infrared2, 640, 480, rs::format::y8, 30);
+            texture_streams.push_back(rs::stream::infrared2);
+        }
+        catch(...) {}
+    }
     dev.start();
     
-    state app_state = {0, 0, 0, 0, false, {rs::stream::infrared}, 0, &dev};
-    if(dev.is_stream_enabled(rs::stream::infrared2)) app_state.tex_streams.push_back(rs::stream::infrared2);
+    state app_state = {0, 0, 0, 0, false, texture_streams, 0, &dev};
     
     glfwInit();
     std::ostringstream ss; ss << "CPP Point Cloud Example (" << dev.get_name() << ")";

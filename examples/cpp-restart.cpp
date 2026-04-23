@@ -11,8 +11,84 @@
 #include <iomanip>
 #include <thread>
 #include <string>
+#include <vector>
 
 texture_buffer buffers[RS_STREAM_COUNT];
+
+struct color_mode_case
+{
+    int width;
+    int height;
+    rs::format format;
+    int fps;
+    const char * label;
+};
+
+static const char * format_to_string(rs::format format)
+{
+    switch(format)
+    {
+    case rs::format::yuyv: return "yuyv";
+    case rs::format::rgb8: return "rgb8";
+    case rs::format::bgr8: return "bgr8";
+    case rs::format::rgba8: return "rgba8";
+    case rs::format::bgra8: return "bgra8";
+    default: return "unknown";
+    }
+}
+
+static int run_color_diagnostics(rs::device & dev)
+{
+    const std::vector<color_mode_case> test_modes = {
+        {640, 480, rs::format::yuyv, 30, "VGA yuyv 30"},
+        {640, 480, rs::format::yuyv, 60, "VGA yuyv 60"},
+        {640, 480, rs::format::rgb8, 30, "VGA rgb8 30"},
+        {640, 480, rs::format::rgb8, 60, "VGA rgb8 60"},
+        {640, 480, rs::format::bgr8, 30, "VGA bgr8 30"},
+        {640, 480, rs::format::bgr8, 60, "VGA bgr8 60"},
+        {640, 480, rs::format::rgba8, 30, "VGA rgba8 30"},
+        {640, 480, rs::format::bgra8, 30, "VGA bgra8 30"},
+        {1920, 1080, rs::format::yuyv, 30, "1080p yuyv 30"},
+        {1920, 1080, rs::format::rgb8, 30, "1080p rgb8 30"}
+    };
+
+    std::cout << "Running color diagnostics on serial " << dev.get_serial() << std::endl;
+    int passed = 0;
+
+    for(size_t i = 0; i < test_modes.size(); ++i)
+    {
+        const auto & mode = test_modes[i];
+        std::cout << "[" << i + 1 << "/" << test_modes.size() << "] " << mode.label
+                  << " (" << mode.width << "x" << mode.height << " "
+                  << format_to_string(mode.format) << " @ " << mode.fps << " fps): ";
+        try
+        {
+            if(dev.is_streaming()) dev.stop();
+            for(int s = 0; s < 4; ++s)
+            {
+                auto stream = (rs::stream)s;
+                if(dev.is_stream_enabled(stream)) dev.disable_stream(stream);
+            }
+
+            dev.enable_stream(rs::stream::color, mode.width, mode.height, mode.format, mode.fps);
+            dev.start();
+            dev.wait_for_frames();
+            dev.wait_for_frames();
+            std::cout << "PASS" << std::endl;
+            ++passed;
+        }
+        catch(const rs::error & e)
+        {
+            std::cout << "FAIL" << std::endl;
+            std::cout << "    function: " << e.get_failed_function() << "(" << e.get_failed_args() << ")" << std::endl;
+            std::cout << "    message:  " << e.what() << std::endl;
+        }
+    }
+
+    if(dev.is_streaming()) dev.stop();
+    std::cout << "Color diagnostics summary: " << passed << " / " << test_modes.size() << " modes passed." << std::endl;
+    return passed > 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
 
 int main(int argc, char * argv[]) try
 {
@@ -24,12 +100,19 @@ int main(int argc, char * argv[]) try
 
     int device_index = 0;
     bool color_only = false;
+    bool color_diag = false;
     if(argc > 1) device_index = std::atoi(argv[1]);
     if(argc > 2 && std::string(argv[2]) == "color") color_only = true;
+    if(argc > 2 && std::string(argv[2]) == "diag-color") color_diag = true;
     if(device_index < 0 || device_index >= ctx.get_device_count()) throw std::runtime_error("Requested device index is out of range");
 
     rs::device & dev = *ctx.get_device(device_index);
     std::cout << "Using device index " << device_index << ", serial " << dev.get_serial() << std::endl;
+
+    if(color_diag)
+    {
+        return run_color_diagnostics(dev);
+    }
 
     // Open a GLFW window
     glfwInit();

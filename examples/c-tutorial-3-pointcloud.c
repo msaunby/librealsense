@@ -73,16 +73,26 @@ int main()
     printf("    Firmware version: %s\n", rs_get_device_firmware_version(dev, &e));
     check_error();
 
-    /* Use 320x240 to improve close-range coverage and reduce USB bandwidth. */
-    const int stream_width = 320, stream_height = 240;
+    const int stream_width = 640, stream_height = 480;
     rs_enable_stream(dev, RS_STREAM_DEPTH, stream_width, stream_height, RS_FORMAT_Z16, 30, &e);
     check_error();
 
-    int use_color_texture = 0;
-    rs_stream texture_stream = RS_STREAM_INFRARED;
-    rs_enable_stream(dev, texture_stream, stream_width, stream_height, RS_FORMAT_Y8, 30, &e);
-    check_error();
-    printf("Using INFRARED texture stream at %dx%d.\n", stream_width, stream_height);
+    int use_color_texture = 1;
+    rs_stream texture_stream = RS_STREAM_COLOR;
+    rs_enable_stream(dev, texture_stream, stream_width, stream_height, RS_FORMAT_RGB8, 30, &e);
+    if(e)
+    {
+        e = 0;
+        use_color_texture = 0;
+        texture_stream = RS_STREAM_INFRARED;
+        rs_enable_stream(dev, texture_stream, stream_width, stream_height, RS_FORMAT_Y8, 30, &e);
+        check_error();
+        printf("Color stream unavailable, using INFRARED texture stream at %dx%d.\n", stream_width, stream_height);
+    }
+    else
+    {
+        printf("Using COLOR texture stream at %dx%d.\n", stream_width, stream_height);
+    }
 
     rs_start_device(dev, &e);
     check_error();
